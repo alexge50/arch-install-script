@@ -13,6 +13,7 @@ parser.add_argument('--root-home-ratio', nargs='?', type=int, default=50, dest='
 parser.add_argument('--configure-ssh', nargs='?', type=bool, default=True, dest='ssh')
 parser.add_argument('--time-zone', nargs='?', default='Europe/Bucharest', dest='time_zone')
 parser.add_argument('--sudo', nargs='?', default=False, dest='sudo')
+parser.add_argument('--drive', nargs='?', default='/dev/sda', dest='drive')
 
 config = parser.parse_args()
 
@@ -38,36 +39,36 @@ system("timedatectl set-ntp true")
 
 # partitioning
 if config.partition: 
-    size = int(capture_system('fdisk -s /dev/sda'))
+    size = int(capture_system(f'fdisk -s {config.drive}'))
     used_size = 0
     partition = 1
-    
-    system("parted -s /dev/sda -- mklabel msdos mkpart primary ext4 1Mib 513Mib")
-    system("mkfs.ext4 /dev/sda1")
+
+    system(f"parted -s {config.drive} -- mklabel msdos mkpart primary 1Mib 513Mib")
+    system(f"mkfs.ext4 {config.drive}1")
     used_size += 513 * 1024
     # SWAP
     if config.swap:
         ram = total_ram()
-        system(f"parted -s /dev/sda -- mkpart primary linux-swap {used_size}Kib {used_size + ram}Kib")
+        system(f"parted -s {config.drive} -- mkpart primary {used_size}Kib {used_size + ram}Kib")
         used_size += ram + 1
         partition += 1
-        system("mkswap /dev/sda2 && swapon /dev/sda2")
-    
+        system(f"mkswap {config.drive}2 && swapon {config.drive}2")
+
     root = (size - used_size) // (100 // config.home_root_ratio)
     print(root)
-    system(f"parted -s /dev/sda -- mkpart primary ext4 {used_size}Kib {used_size + root}Kib")
+    system(f"parted -s {config.drive} -- mkpart primary {used_size}Kib {used_size + root}Kib")
     used_size += root + 1
     partition += 1
-    #system("mkfs.ext4 /dev/sda3")
-    
+    system(f"mkfs.ext4 {config.drive}{partition}")
+
     print(used_size)
-    system(f"parted -s /dev/sda -- mkpart primary ext4 {used_size}Kib 100%")
+    system(f"parted -s {config.drive} -- mkpart primary {used_size}Kib 100%")
     partition += 1
-    #system("mkfs.ext4 /dev/sda4")
-    
-    system(f"mount /dev/sda{partition - 1} /mnt")
-    system(f"mkdir /mnt/home && mount /dev/sda{partition} /mnt/home")
-    system("mkdir /mnt/boot && mount /dev/sda1 /mnt/boot")
+    system(f"mkfs.ext4 {config.drive}{partition}")
+
+    system(f"mount {config.drive}{partition - 1} /mnt")
+    system(f"mkdir /mnt/home && mount {config.drive}{partition} /mnt/home")
+    system(f"mkdir /mnt/boot && mount {config.drive}1 /mnt/boot")
 else:
     system("bash") # spawns a bash for the user to manually configure
 
@@ -100,7 +101,7 @@ chroot_system('echo "purple-unicorn" > /etc/hostname')
 chroot_system('mkinitcpio -p linux')
 chroot_system(f'echo "{config.root_password}\n{config.root_password}\n" | passwd')
 chroot_system("pacman -S amd-ucode intel-ucode grub")
-chroot_system("grub-install --target=i386-pc /dev/sda")
+chroot_system("grub-install --target=i386-pc {config.drive}")
 chroot_system("grub-mkconfig -o /boot/grub/grub.cfg")
 
 chroot_system(f"useradd -m {config.user}")
